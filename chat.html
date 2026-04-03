@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Advanced Chat</title>
+<title>OurChat</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
@@ -124,12 +124,12 @@ textarea{width:100%;border-radius:20px;padding:10px;border:none;resize:none;}
 <body>
 
 <div class="top-bar">
-    Chat CLNS
+    <i>OurChat</i>
     <i class="fa-solid fa-user" onclick="profileModal.style.display='flex'"></i>
 </div>
 
 <div id="chatHeader">
-    <div id="onlineCount">0 Online</div>
+    <div id="onlineCount">0<i>Online</i></div>
     <div id="typingStatus"></div>
     <div id="recordingStatus"></div>
 </div>
@@ -173,7 +173,7 @@ textarea{width:100%;border-radius:20px;padding:10px;border:none;resize:none;}
 
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 <script>
-const socket = io("https://topher-zc99.onrender.com");
+const socket = io('https://chacha2004-19.onrender.com');
 const DEFAULT_PROFILE="https://via.placeholder.com/40";
 
 let currentUser={}, typingTimer, mediaRecorder, audioChunks=[], recording=false;
@@ -277,7 +277,7 @@ function addMessage(msg,isUser){
 
 // ------------------ LOAD MESSAGES ------------------
 async function loadMessages(){
-    const res=await fetch("https://chacha2004-9-aefi.onrender.com/messages");
+    const res=await fetch('https://chacha2004-19.onrender.com');
     (await res.json()).forEach(m=>addMessage(m,m.senderName===currentUser.name));
 }
 
@@ -344,7 +344,7 @@ async function sendMessage(){
             content: await toBase64(blob),
             timestamp: new Date()
         };
-        const r = await fetch("https://chacha2004-9-aefi.onrender.com/saveMessageURI",{
+        const r = await fetch("https://chacha2004-19.onrender.com/saveMessageURI",{
             method:"POST", headers:{'Content-Type':'application/json'}, body:JSON.stringify(msg)
         });
         socket.emit("messageSent", await r.json());
@@ -364,7 +364,7 @@ async function sendMessage(){
                 fileName: f.name,
                 timestamp: new Date()
             };
-            const r = await fetch("https://chacha2004-9-aefi.onrender.com/saveMessageURI",{
+            const r = await fetch("https://chacha2004-19.onrender.com/saveMessageURI",{
                 method:"POST", headers:{'Content-Type':'application/json'}, body:JSON.stringify(msg)
             });
             socket.emit("messageSent", await r.json());
@@ -383,7 +383,7 @@ async function sendMessage(){
         content: text,
         timestamp: new Date()
     };
-    const r = await fetch("https://chacha2004-9-aefi.onrender.com/saveMessageURI",{
+    const r = await fetch("https://chacha2004-19.onrender.com/saveMessageURI",{
         method:"POST", headers:{'Content-Type':'application/json'}, body:JSON.stringify(msg)
     });
     socket.emit("messageSent", await r.json());
