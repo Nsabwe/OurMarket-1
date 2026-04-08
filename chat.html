@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chat App</title>
+<style>
+  body { font-family: Arial; margin: 0; }
+  #chatHeader, .bottom-bar, #contentArea, #privateChat { display: none; }
+  .message-container { display: flex; margin: 5px; }
+  .message-container.user { flex-direction: row-reverse; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; margin: 0 5px; }
+  .message { background: #eee; padding: 5px 10px; border-radius: 5px; max-width: 60%; }
+  .user-item { cursor: pointer; margin: 5px; display: flex; align-items: center; }
+  .user-item img { width: 30px; height: 30px; border-radius: 50%; margin-right: 5px; }
+  .badge { background: red; color: #fff; border-radius: 50%; padding: 2px 5px; font-size: 12px; margin-left: 5px; }
+</style>
+</head>
+<body>
+
+<audio id="notifSound" src="https://www.soundjay.com/buttons/sounds/button-16.mp3"></audio>
+
+<!-- ===== AUTH MODAL ===== -->
+<div id="authModal">
+  <h2 id="authTitle">Create Account</h2>
+  <div id="registerFields">
+    <input id="firstName" placeholder="First Name"><br>
+    <input id="lastName" placeholder="Last Name"><br>
+    <input id="phone" placeholder="Phone"><br>
+    <input type="password" id="password" placeholder="Password"><br>
+    <input type="file" id="profilePic"><br>
+  </div>
+  <div id="loginFields" style="display:none">
+    <input id="loginPhone" placeholder="Phone"><br>
+    <input type="password" id="loginPassword" placeholder="Password"><br>
+  </div>
+  <button id="authBtn">Create Account</button>
+  <p id="switchAuth" style="cursor:pointer; color:blue;">Already have account? Login</p>
+  <p id="authMsg" style="color:red;"></p>
+</div>
+
+<!-- ===== CHAT UI ===== -->
+<div id="chatHeader">
+  <h3>Public Chat</h3>
+  <span id="onlineCount"></span>
+</div>
+
+<div id="contentArea" style="height:300px; overflow-y:auto; border:1px solid #ccc;"></div>
+<div class="bottom-bar">
+  <input id="messageInput" placeholder="Type a message...">
+  <button id="sendBtn">Send</button>
+  <span id="typingStatus" style="margin-left:10px; font-style:italic;"></span>
+</div>
+
+<!-- ===== USERS ===== -->
+<div id="userList"></div>
+
+<!-- ===== PRIVATE CHAT ===== -->
+<div id="privateChat" style="flex-direction:column; border:1px solid #333; padding:5px;">
+  <button id="backToPublic">Back</button>
+  <h4 id="privateChatUser"></h4>
+  <div id="privateContent" style="height:200px; overflow-y:auto;"></div>
+  <input id="privateInput" placeholder="Private message...">
+  <button id="privateSend">Send</button>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+const socket = io("https://list-1-bsyv.onrender.com");
+let myUser = null;
+let currentPrivateUser = null;
+let unreadPublic = 0;
+const privateUnread = {};
+
+// ===== SHOW CHAT =====
+function showChat() {
+  document.getElementById("chatHeader").style.display = "flex";
+  document.getElementById("contentArea").style.display = "block";
+  document.querySelector(".bottom-bar").style.display = "flex";
+}
+
+// ===== AUDIO =====
+function playSound() { document.getElementById("notifSound").play().catch(() => {}); }
+
+// ===== AUTH =====
+const authModal = document.getElementById("authModal");
+const authTitle = document.getElementById("authTitle");
+const registerFields = document.getElementById("registerFields");
+const loginFields = document.getElementById("loginFields");
+const authBtn = document.getElementById("authBtn");
+const switchAuth = document.getElementById("switchAuth");
+const authMsg = document.getElementById("authMsg");
+let isRegister = true;
+
+switchAuth.onclick = () => {
+  isRegister = !isRegister;
+  authTitle.textContent = isRegister ? "Create Account" : "Login";
+  registerFields.style.display = isRegister ? "block" : "none";
+  loginFields.style.display = isRegister ? "none" : "block";
+  authBtn.textContent = isRegister ? "Create Account" : "Login";
+  switchAuth.textContent = isRegister ? "Already have account? Login" : "Don't have account? Create Account";
+};
+
+// ===== REGISTER & LOGIN =====
+authBtn.onclick = async () => {
+  authMsg.textContent = "";
+  if (isRegister) {
+    const firstName = document.getElementById("firstName").value.trim();
+    const lastName = document.getElementById("lastName").value.trim();
+    const phone = document.getElementById("phone").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const profilePic = document.getElementById("profilePic").files[0];
+    if (!firstName||!lastName||!phone||!password||!profilePic) { authMsg.textContent="All fields required"; return; }
+
+    const formData = new FormData();
+    formData.append("firstName", firstName);
+    formData.append("lastName", lastName);
+    formData.append("phone", phone);
+    formData.append("password", password);
+    formData.append("profilePic", profilePic);
+
+    try {
+      const res = await fetch("https://list-1-bsyv.onrender.com/register",{method:"POST",body:formData});
+      const data = await res.json();
+      if(data.success){ myUser=data.user; authModal.style.display="none"; showChat(); initChat(); } 
+      else authMsg.textContent=data.message||"Registration failed";
+    } catch(e){ console.error(e); authMsg.textContent="Registration failed"; }
+
+  } else {
+    const phone=document.getElementById("loginPhone").value.trim();
+    const password=document.getElementById("loginPassword").value.trim();
+    if(!phone||!password){ authMsg.textContent="Phone and password required"; return; }
+
+    try{
+      const res=await fetch("https://list-1-bsyv.onrender.com/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password})});
+      const data=await res.json();
+      if(data.success){ myUser=data.user; authModal.style.display="none"; showChat(); initChat(); }
+      else authMsg.textContent=data.message||"Login failed";
+    } catch(e){ console.error(e); authMsg.textContent="Login failed"; }
+  }
+};
+
+// ===== INIT CHAT =====
+async function initChat() {
+  await loadUsers();
+  await loadPublicMessages();
+  socket.emit("join", myUser._id);
+
+  socket.on("newMessage", msg => {
+    msg.profilePic = msg.profilePic || myUser.profilePic;
+    addMessage(msg, msg.senderId === myUser._id);
+    if(msg.senderId !== myUser._id){ unreadPublic++; updatePublicBadge(); playSound(); }
+  });
+
+  socket.on("privateMessage", data => {
+    data.senderAvatar = data.senderAvatar || data.senderProfilePic || myUser.profilePic;
+    if(data.toId === myUser._id){
+      if(currentPrivateUser && currentPrivateUser._id===data.fromId){ addPrivateMessage(data,false); }
+      else { privateUnread[data.fromId] = (privateUnread[data.fromId]||0)+1; updatePrivateBadge(data.fromId); playSound(); }
+    }
+  });
+
+  socket.on("typing", data=>showTyping(data));
+}
+
+// ===== LOAD USERS =====
+async function loadUsers() {
+  const users=await (await fetch("https://list-1-bsyv.onrender.com")).json();
+  const userList=document.getElementById("userList"); userList.innerHTML="";
+  users.filter(u=>u._id!==myUser._id).forEach(u=>{
+    const div=document.createElement("div");
+    div.className="user-item"; div.dataset.userid=u._id;
+    const badgeCount=privateUnread[u._id]||0;
+    div.innerHTML=`<img src="${u.profilePic}"><span>${u.firstName} ${u.lastName}</span><span class="badge" style="display:${badgeCount?'inline':'none'}">${badgeCount}</span>`;
+    div.onclick=()=>openPrivateChat(u);
+    userList.appendChild(div);
+  });
+  document.getElementById("onlineCount").textContent=(users.length-1)+" Online";
+}
+
+// ===== MESSAGES =====
+function addMessage(msg,isUser){
+  const contentArea=document.getElementById("contentArea");
+  const c=document.createElement("div"); c.className="message-container"+(isUser?" user":"");
+  const avatar=document.createElement("img"); avatar.className="avatar"; avatar.src=msg.profilePic;
+  const m=document.createElement("div"); m.className="message";
+  m.innerHTML=`<b>${msg.senderName||msg.sender}</b><br>${msg.content}<br><small>${new Date(msg.time).toLocaleTimeString()}</small>`;
+  if(isUser){ c.appendChild(m); c.appendChild(avatar); } else { c.appendChild(avatar); c.appendChild(m); }
+  contentArea.appendChild(c); contentArea.scrollTop=contentArea.scrollHeight;
+}
+
+async function loadPublicMessages(){
+  const msgs=await (await fetch("https://list-1-bsyv.onrender.com")).json();
+  msgs.forEach(msg=>{ msg.profilePic=msg.profilePic||myUser.profilePic; addMessage(msg,msg.senderId===myUser._id); });
+}
+
+// ===== PRIVATE CHAT =====
+const privateChat=document.getElementById("privateChat"); const privateContent=document.getElementById("privateContent");
+document.getElementById("backToPublic").onclick=()=>{ privateChat.style.display="none"; currentPrivateUser=null; };
+
+function openPrivateChat(user){
+  currentPrivateUser=user; privateChat.style.display="flex";
+  document.getElementById("privateChatUser").textContent=user.firstName+" "+user.lastName;
+  privateContent.innerHTML=""; loadPrivateHistory(user._id); privateUnread[user._id]=0; updatePrivateBadge(user._id);
+}
+
+async function loadPrivateHistory(userId){
+  const msgs=await (await fetch(`https://list-1-bsyv.onrender.com/privateMessages/${myUser._id}/${userId}`)).json();
+  msgs.forEach(msg=>{ msg.senderAvatar=msg.senderAvatar||msg.profilePic||myUser.profilePic; addPrivateMessage(msg,msg.fromId===myUser._id); });
+}
+
+function addPrivateMessage(msg,isUser){
+  const c=document.createElement("div"); c.className="message-container"+(isUser?" user":"");
+  const avatar=document.createElement("img"); avatar.className="avatar"; avatar.src=msg.senderAvatar;
+  const m=document.createElement("div"); m.className="message";
+  m.innerHTML=`<b>${msg.senderName||msg.sender}</b><br>${msg.content}<br><small>${new Date(msg.time).toLocaleTimeString()}</small>`;
+  if(isUser){ c.appendChild(m); c.appendChild(avatar); } else { c.appendChild(avatar); c.appendChild(m); }
+  privateContent.appendChild(c); privateContent.scrollTop=privateContent.scrollHeight;
+}
+
+// ===== SEND MESSAGE =====
+document.getElementById("sendBtn").onclick=()=>{
+  const text=document.getElementById("messageInput").value.trim();
+  if(!text) return;
+  const msg={ senderId: myUser._id, senderName: myUser.firstName, content:text, profilePic:myUser.profilePic, time:Date.now() };
+  socket.emit("publicMessage",msg); addMessage(msg,true); document.getElementById("messageInput").value="";
+};
+
+// ===== SEND PRIVATE =====
+document.getElementById("privateSend").onclick=()=>{
+  const text=document.getElementById("privateInput").value.trim();
+  if(!text||!currentPrivateUser) return;
+  const msg={ senderId:myUser._id, senderName:myUser.firstName, content:text, senderAvatar:myUser.profilePic, time:Date.now() };
+  socket.emit("privateMessage",{to:currentPrivateUser._id,msg}); addPrivateMessage(msg,true); document.getElementById("privateInput").value="";
+};
+
+// ===== TYPING =====
+document.getElementById("messageInput").addEventListener("input",()=>{ socket.emit("typing",{from:myUser._id,name:myUser.firstName}); });
+function showTyping(data){ const t=document.getElementById("typingStatus"); t.textContent=`${data.name} is typing...`; setTimeout(()=>{t.textContent="";},1500); }
+
+// ===== BADGES =====
+function updatePublicBadge(){ const btn=document.getElementById("sendBtn"); btn.textContent=unreadPublic?`Send (${unreadPublic})`:"Send"; }
+function updatePrivateBadge(userId){
+  const userDiv=document.querySelector(`.user-item[data-userid="${userId}"] .badge`);
+  if(userDiv){ const count=privateUnread[userId]||0; userDiv.style.display=count?"inline":"none"; userDiv.textContent=count; }
+}
+</script>
+</body>
+</html>
